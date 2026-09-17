@@ -48,9 +48,9 @@ class DashboardScreen extends StatelessWidget {
             Text(
               '$greeting, $userName',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -75,9 +75,9 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 28),
             Text(
               'Quick actions',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             _AdminDashboardCards(scheme: scheme),
@@ -156,17 +156,49 @@ class _AdminDashboardCards extends StatelessWidget {
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: cards.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.18,
-      ),
-      itemBuilder: (context, index) => cards[index],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Desktop
+        if (constraints.maxWidth >= 1200) {
+          return Wrap(
+            spacing: 20,
+            runSpacing: 20,
+            children: cards
+                .map((card) => SizedBox(width: 300, height: 170, child: card))
+                .toList(),
+          );
+        }
+
+        // Tablet
+        if (constraints.maxWidth >= 700) {
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: cards.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 18,
+              mainAxisSpacing: 18,
+              childAspectRatio: 1.45,
+            ),
+            itemBuilder: (_, index) => cards[index],
+          );
+        }
+
+        // Mobile
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: cards.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 1,
+            crossAxisSpacing: 18,
+            mainAxisSpacing: 18,
+            childAspectRatio: 2.2,
+          ),
+          itemBuilder: (_, index) => cards[index],
+        );
+      },
     );
   }
 }
@@ -191,9 +223,9 @@ class _PublishedTimetablesSection extends StatelessWidget {
       children: [
         Text(
           'Published Timetables',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -247,11 +279,12 @@ class _PublishedTimetablesSection extends StatelessWidget {
                 final program =
                     (d['program_name'] ?? d['program'] ?? 'All programs')
                         .toString();
-                final session = (d['session'] ??
-                        d['academic_session'] ??
-                        d['academic_session_name'] ??
-                        'Session not set')
-                    .toString();
+                final session =
+                    (d['session'] ??
+                            d['academic_session'] ??
+                            d['academic_session_name'] ??
+                            'Session not set')
+                        .toString();
                 final status = (d['status'] ?? 'Published').toString();
                 final updated = d['updated_at'] as Timestamp?;
                 return Padding(
@@ -325,18 +358,12 @@ class _PublishedPreviewCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               programAndSession,
-              style: TextStyle(
-                fontSize: 12,
-                color: scheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 2),
             Text(
               'Updated: $updatedLabel',
-              style: TextStyle(
-                fontSize: 12,
-                color: scheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ],
         ),
