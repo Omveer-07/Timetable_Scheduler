@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:timetable_scheduler/routes/app_routes.dart';
 import 'package:timetable_scheduler/services/timetable_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OverviewScreen extends StatefulWidget {
   const OverviewScreen({super.key});
@@ -20,7 +21,16 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
     try {
       await _timetableService.generateFullTimetableFromPreparedData();
+
+      await FirebaseFirestore.instance
+          .collection('timetable_stats')
+          .doc('counters')
+          .set({
+            'draft_count': FieldValue.increment(1),
+          }, SetOptions(merge: true));
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Timetable generated successfully')),
       );
@@ -43,9 +53,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Overview'),
-      ),
+      appBar: AppBar(title: const Text('Overview')),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -118,9 +126,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   }) {
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Ink(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -162,4 +168,3 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 }
-

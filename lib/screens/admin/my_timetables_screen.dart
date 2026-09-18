@@ -1,20 +1,139 @@
 import 'package:flutter/material.dart';
 import 'package:timetable_scheduler/routes/app_routes.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:timetable_scheduler/services/timetable_service.dart';
 
 /// Hub for managing timetables. "+ New Timetable" opens [OverviewScreen] for configuration and generation.
-class MyTimetablesScreen extends StatelessWidget {
+class MyTimetablesScreen extends StatefulWidget {
   const MyTimetablesScreen({super.key});
 
+  @override
+  State<MyTimetablesScreen> createState() => _MyTimetablesScreenState();
+}
+
+class _MyTimetablesScreenState extends State<MyTimetablesScreen> {
   static const _instituteName = 'Tech Institute';
+
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final TimetableService _timetableService = TimetableService();
+
+  bool _isLoading = true;
+
+  int _total = 0;
+  int _published = 0;
+  int _drafts = 0;
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _draftTimetables = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTimetables();
+  }
+
+  Future<void> _loadTimetables() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    try {
+      final timetableSnapshot = await _db
+          .collection('timetable_config')
+          .where('document_type', isEqualTo: 'timetable')
+          .get();
+
+      final allTimetables = timetableSnapshot.docs;
+      final draftDocs = allTimetables.where((doc) {
+        final data = doc.data();
+        return data['status'] == 'draft';
+      }).toList();
+      final publishedDocs = allTimetables.where((doc) {
+        final data = doc.data();
+        return data['status'] == 'published';
+      }).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        _draftTimetables = draftDocs;
+
+        _total = allTimetables.length;
+        _drafts = draftDocs.length;
+        _published = publishedDocs.length;
+
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load timetables: $e')));
+    }
+  }
+
+  Future<void> _publishTimetable(String timetableId) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      await _timetableService.publishTimetable(timetableId);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Timetable published successfully')),
+      );
+
+      // Refresh dashboard values and draft list.
+      await _loadTimetables();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to publish timetable: $e')),
+      );
+    }
+  }
+
+  String _formatDate(dynamic value) {
+    if (value == null) {
+      return 'Generated timetable';
+    }
+
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    }
+
+    if (date == null) {
+      return 'Generated timetable';
+    }
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Timetables'),
-      ),
+      appBar: AppBar(title: const Text('My Timetables')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
         child: Column(
@@ -22,12 +141,10 @@ class MyTimetablesScreen extends StatelessWidget {
           children: [
             Text(
               'Manage all your timetables',
-              style: TextStyle(
-                fontSize: 15,
-                color: scheme.onSurfaceVariant,
-              ),
+              style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
+
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -44,14 +161,16 @@ class MyTimetablesScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
+
             const SizedBox(height: 28),
+
             Row(
               children: [
                 Expanded(
                   child: _StatCard(
                     icon: Icons.calendar_month_outlined,
                     label: 'Total',
-                    value: '12',
+                    value: _total.toString(),
                     color: scheme.primaryContainer,
                     onSurface: scheme.onPrimaryContainer,
                   ),
@@ -61,7 +180,7 @@ class MyTimetablesScreen extends StatelessWidget {
                   child: _StatCard(
                     icon: Icons.publish_outlined,
                     label: 'Published',
-                    value: '5',
+                    value: _published.toString(),
                     color: scheme.tertiaryContainer,
                     onSurface: scheme.onTertiaryContainer,
                   ),
@@ -71,44 +190,84 @@ class MyTimetablesScreen extends StatelessWidget {
                   child: _StatCard(
                     icon: Icons.edit_note_outlined,
                     label: 'Drafts',
-                    value: '7',
+                    value: _drafts.toString(),
                     color: scheme.secondaryContainer,
                     onSurface: scheme.onSecondaryContainer,
                   ),
                 ),
               ],
             ),
+
             const SizedBox(height: 28),
+
             Text(
               'Drafts',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
+
             const SizedBox(height: 12),
-            _DraftTimetableCard(
-              name: 'Semester A — $_instituteName',
-              created: '28 Apr 2026',
-              updated: '30 Apr 2026',
-              isPublished: false,
-              onPublish: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Publish flow coming soon')),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            _DraftTimetableCard(
-              name: 'Exam week grid',
-              created: '1 May 2026',
-              updated: '2 May 2026',
-              isPublished: false,
-              onPublish: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Publish flow coming soon')),
-                );
-              },
-            ),
+
+            if (_isLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_draftTimetables.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'No draft timetable available.',
+                  textAlign: TextAlign.center,
+                ),
+              )
+            else
+              Column(
+                children: _draftTimetables.map((doc) {
+                  final data = doc.data();
+
+                  final timetableId = doc.id;
+
+                  final timetableName = (data['timetable_name'] ?? '')
+                      .toString()
+                      .trim();
+
+                  final sessionName = (data['session_name'] ?? '')
+                      .toString()
+                      .trim();
+
+                  final createdAt = data['created_at'];
+                  final updatedAt = data['updated_at'];
+
+                  final displayName = timetableName.isEmpty
+                      ? 'Current Timetable — $_instituteName'
+                      : timetableName;
+
+                  final createdText = createdAt == null
+                      ? 'Generated timetable'
+                      : _formatDate(createdAt);
+
+                  final updatedText = updatedAt == null
+                      ? 'Ready to publish'
+                      : _formatDate(updatedAt);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _DraftTimetableCard(
+                      name: displayName,
+                      created: createdAt == null ? createdText : createdText,
+                      updated: updatedAt == null ? updatedText : updatedText,
+                      isPublished: false,
+                      onPublish: () {
+                        _publishTimetable(timetableId);
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),
@@ -241,16 +400,21 @@ class _DraftTimetableCard extends StatelessWidget {
                   ),
                 ],
               ),
+
               const SizedBox(height: 8),
+
               Text(
                 'Created $created',
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
+
               Text(
                 'Updated $updated',
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
+
               const SizedBox(height: 14),
+
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton.tonal(

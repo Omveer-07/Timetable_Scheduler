@@ -15,17 +15,21 @@ class DashboardScreen extends StatelessWidget {
   String _displayName() {
     final name = profile?.name.trim();
     if (name != null && name.isNotEmpty) return name;
+
     final email = profile?.email;
     if (email != null && email.isNotEmpty) {
       return email.split('@').first;
     }
+
     return 'Admin';
   }
 
   String _greetingForNow() {
     final h = DateTime.now().hour;
+
     if (h < 12) return 'Good Morning';
     if (h < 17) return 'Good Afternoon';
+
     return 'Good Evening';
   }
 
@@ -82,7 +86,7 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _AdminDashboardCards(scheme: scheme),
             const SizedBox(height: 26),
-            _PublishedTimetablesSection(scheme: scheme),
+            const _PublishedTimetablesSection(),
           ],
         ),
       ),
@@ -204,103 +208,87 @@ class _AdminDashboardCards extends StatelessWidget {
 }
 
 class _PublishedTimetablesSection extends StatelessWidget {
-  const _PublishedTimetablesSection({required this.scheme});
+  const _PublishedTimetablesSection();
 
-  final ColorScheme scheme;
+  String _displayDate(Timestamp? timestamp) {
+    if (timestamp == null) return 'Recently published';
 
-  String _displayDate(Timestamp? ts) {
-    if (ts == null) return 'Unknown';
-    final dt = ts.toDate();
-    final day = dt.day.toString().padLeft(2, '0');
-    final month = dt.month.toString().padLeft(2, '0');
-    return '$day/$month/${dt.year}';
+    final date = timestamp.toDate();
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Published Timetables',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 10),
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('timetable_config')
-              .orderBy('updated_at', descending: true)
-              .limit(8)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
-              );
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('timetable_config')
+          .where('document_type', isEqualTo: 'timetable')
+          .where('status', isEqualTo: 'published')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text('Failed to load published timetables'),
+          );
+        }
+
+        final timetableDocs = snapshot.data?.docs ?? [];
+
+        // No published timetable
+        if (timetableDocs.isEmpty) {
+          return const _PublishedEmptyCard(
+            title: 'No published timetable available',
+            subtitle: 'Publish from My Timetables to see previews here',
+            icon: Icons.calendar_month_outlined,
+          );
+        }
+
+        // Display every published timetable instance.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: timetableDocs.map((doc) {
+            final data = doc.data();
+
+            final timetableName =
+                data['timetable_name']?.toString().trim() ?? '';
+
+            final sessionName = data['session_name']?.toString().trim() ?? '';
+
+            final publishedOn = data['published_on'] is Timestamp
+                ? data['published_on'] as Timestamp
+                : null;
+
+            String displayName;
+
+            if (timetableName.isNotEmpty && sessionName.isNotEmpty) {
+              displayName = '$timetableName ($sessionName)';
+            } else if (timetableName.isNotEmpty) {
+              displayName = timetableName;
+            } else if (sessionName.isNotEmpty) {
+              displayName = sessionName;
+            } else {
+              displayName = 'Published Timetable';
             }
 
-            if (snapshot.hasError) {
-              return _PublishedEmptyCard(
-                scheme: scheme,
-                title: 'Unable to load published timetables',
-                subtitle: 'Check Firestore data or indexes',
-                icon: Icons.error_outline_rounded,
-              );
-            }
-
-            final docs = (snapshot.data?.docs ?? [])
-                .where((doc) {
-                  final d = doc.data();
-                  return d['is_published'] == true ||
-                      d['published'] == true ||
-                      d['status'] == 'published';
-                })
-                .take(3)
-                .toList();
-
-            if (docs.isEmpty) {
-              return _PublishedEmptyCard(
-                scheme: scheme,
-                title: 'No published timetable available',
-                subtitle: 'Publish from My Timetables to see previews here',
-                icon: Icons.event_busy_outlined,
-              );
-            }
-
-            return Column(
-              children: docs.map((doc) {
-                final d = doc.data();
-                final name =
-                    (d['timetable_name'] ?? d['name'] ?? 'Untitled timetable')
-                        .toString();
-                final program =
-                    (d['program_name'] ?? d['program'] ?? 'All programs')
-                        .toString();
-                final session =
-                    (d['session'] ??
-                            d['academic_session'] ??
-                            d['academic_session_name'] ??
-                            'Session not set')
-                        .toString();
-                final status = (d['status'] ?? 'Published').toString();
-                final updated = d['updated_at'] as Timestamp?;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _PublishedPreviewCard(
-                    name: name,
-                    programAndSession: '$program • $session',
-                    status: status,
-                    updatedLabel: _displayDate(updated),
-                  ),
-                );
-              }).toList(),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _PublishedPreviewCard(
+                name: displayName,
+                programAndSession: '',
+                status: 'Published',
+                updatedLabel: _displayDate(publishedOn),
+              ),
             );
-          },
-        ),
-      ],
+          }).toList(),
+        );
+      },
     );
   }
 }
@@ -321,6 +309,7 @@ class _PublishedPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -355,12 +344,19 @@ class _PublishedPreviewCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              programAndSession,
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-            ),
+
+            // Kept empty intentionally because the timetable name
+            // already contains timetable_name + session_name.
+            if (programAndSession.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                programAndSession,
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            ],
+
             const SizedBox(height: 2),
+
             Text(
               'Updated: $updatedLabel',
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
@@ -374,19 +370,19 @@ class _PublishedPreviewCard extends StatelessWidget {
 
 class _PublishedEmptyCard extends StatelessWidget {
   const _PublishedEmptyCard({
-    required this.scheme,
     required this.title,
     required this.subtitle,
     required this.icon,
   });
 
-  final ColorScheme scheme;
   final String title;
   final String subtitle;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

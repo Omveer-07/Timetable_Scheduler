@@ -167,6 +167,7 @@ class _FacultyScheduleScreenState extends State<FacultyScheduleScreen> {
       final timetableSnapshot = await _db
           .collection('timetable')
           .where('faculty_id', isEqualTo: facultyId)
+          .where('status', isEqualTo: 'published')
           .get();
 
       if (!mounted) return;

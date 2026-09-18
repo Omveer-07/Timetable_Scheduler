@@ -172,6 +172,7 @@ class _ViewTimetableScreenState extends State<ViewTimetableScreen> {
       final timetableSnapshot = await _db
           .collection('timetable')
           .where('program_id', isEqualTo: programId)
+          .where('status', isEqualTo: 'published')
           .get();
 
       if (!mounted) return;
